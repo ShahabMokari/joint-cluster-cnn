@@ -1,3 +1,5 @@
+I just forked this repository from https://github.com/FJR-Nancy/joint-cluster-cnn and tried by applying some minor changes run it in tensorflow 2. I also added some relevant documents and slides. All credits goes to people oroginally build and created them.
+
 # joint-cluster-cnn
 
 An unofficial implementation of [JULE](https://arxiv.org/pdf/1604.03628) (Joint Unsupervised Learning of Deep Representations and Image Clusters) in TensorFlow.
