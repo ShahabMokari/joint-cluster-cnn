@@ -1,10 +1,11 @@
 import numpy as np
 import tensorflow as tf
-from tensorflow.contrib.layers import convolution2d, batch_norm, fully_connected, max_pool2d, flatten
-from tensorflow.examples.tutorials.mnist import input_data
+from tensorflow.keras.layers import  Convolution2D,BatchNormalization, MaxPool2D, Flatten # convolution2d, batch_norm, fully_connected, max_pool2d, flatten
+
+
 from scipy.sparse import csr_matrix
 from sklearn.neighbors import NearestNeighbors
-from sklearn.datasets import fetch_mldata
+#from sklearn.datasets import fetch_mldata
 from sklearn.preprocessing import normalize
 from PIL import Image
 from munkres import Munkres
@@ -31,7 +32,7 @@ class joint_cluster_cnn():
     iter_cnn = 0
 
     def __init__(self, dataset, RC=True, updateCNN=True, eta=0.9):
-        self.sess = tf.InteractiveSession()
+        self.sess =  tf.compat.v1.InteractiveSession() #tf.InteractiveSession()
 
         self.dataset = dataset
         self.RC = RC
@@ -59,16 +60,19 @@ class joint_cluster_cnn():
         self.logger.info('%.2f s, Begin to extract dataset', timeit.default_timer() - self.tic)
         # Input data
         if 'mnist-test' in dataset:
-            mnist = input_data.read_data_sets('MNIST_data', dtype=tf.uint8, one_hot=False)
-            self.images = mnist.test.images
-            self.gnd = mnist.test.labels
+            #mnist = input_data.read_data_sets('MNIST_data', dtype=tf.uint8, one_hot=False)
+            (x_train, y_train), (x_test, y_test) = tf.keras.datasets.mnist.load_data()
+            #self.images = x_test.reshape(x_test.shape[0],self.image_size1* self.image_size2 ) #mnist.test.images
+            self.gnd = y_test #mnist.test.labels
             self.image_size1 = 28
             self.image_size2 = 28
             self.channel = 1
             self.K = 10
+            self.images = x_test.reshape(x_test.shape[0], self.image_size1 * self.image_size2)  # mnist.test.images
             self.logger.info('%.2f s, Finished extracting MNIST-test dataset', timeit.default_timer() - self.tic)
         elif 'mnist-full' in dataset:
-            mnist = input_data.read_data_sets('MNIST_data', dtype=tf.uint8, one_hot=False)
+            # mnist = input_data.read_data_sets('MNIST_data', dtype=tf.uint8, one_hot=False)
+            mnist = tf.keras.datasets.mnist.load_data()
             images = np.concatenate((mnist.test.images, mnist.validation.images), axis=0)
             gnd = np.concatenate((mnist.test.labels, mnist.validation.labels), axis=0)
             self.images = np.concatenate((mnist.train.images, images), axis=0)
@@ -78,80 +82,82 @@ class joint_cluster_cnn():
             self.channel = 1
             self.K = 10
             self.logger.info('%.2f s, Finished extracting MNIST-full dataset', timeit.default_timer() - self.tic)
-        elif 'usps' in dataset:
-            usps = fetch_mldata("USPS")
-            self.images = usps.data
-            self.gnd = usps.target.astype(np.int) - 1
-            self.image_size1 = 16
-            self.image_size2 = 16
-            self.channel = 1
-            self.K = 10
-            self.logger.info('%.2f s, Finished extracting USPS dataset', timeit.default_timer() - self.tic)
-        elif 'coil20' in dataset:
-            self.image_size1 = 128
-            self.image_size2 = 128
-            self.channel =1
-            self.images = np.zeros((20*72, self.image_size1 * self.image_size2), np.uint8)
-            self.gnd = np.zeros(20*72, np.uint8)
-            path = './dataset/coil-20-proc/obj'
-            for i in range(20):
-                for j in range(72):
-                    img_name = path + str(i+1) + '__' + str(j) + '.png'
-                    img = Image.open(img_name)
-                    img.load()
-                    img_data = np.asarray(img, dtype=np.uint8)
-                    self.images[i*72+j, :] = np.reshape(img_data, (1, self.image_size1 * self.image_size2))
-                    self.gnd[i*72+j] = i
-            self.K = 20
-            self.logger.info('%.2f s, Finished extracting COIL20 dataset', timeit.default_timer() - self.tic)
-        elif 'coil100' in dataset:
-            self.image_size1 = 128
-            self.image_size2 = 128
-            self.channel = 3
-            self.images = np.zeros((100*72, self.image_size1 * self.image_size2 * self.channel), np.uint8)
-            self.gnd = np.zeros(100*72, np.uint8)
-            path = './dataset/coil-100/obj'
-            for i in range(100):
-                for j in range(72):
-                    img_name = path + str(i+1) + '__' + str(j*5) + '.png'
-                    img = Image.open(img_name)
-                    img.load()
-                    img_data = np.asarray(img, dtype=np.uint8)
-                    self.images[i*72+j, :] = np.reshape(img_data, (1, self.image_size1 * self.image_size2 * self.channel))
-                    self.gnd[i*72+j] = i
-            self.K = 100
-            self.logger.info('%.2f s, Finished extracting COIL100 dataset', timeit.default_timer() - self.tic)
-        elif 'umist' in dataset:
-            self.image_size1 = 112
-            self.image_size2 = 92
-            self.channel = 1
-            self.images = np.zeros((575, self.image_size1 * self.image_size2), np.uint8)
-            self.gnd = np.zeros(575, np.uint8)
-            path = './dataset/UMist/'
-            n = 0
-            for i in range(20):
-                j = 0
-                while True:
-                    img_name = path + chr(97 + i) + str(j + 1) + '.pgm' # ord('a')=97
-                    if not os.path.isfile(img_name):
-                        break
-                    img = Image.open(img_name)
-                    img.load()
-                    img_data = np.asarray(img, dtype=np.uint8)
-                    self.images[n, :] = np.reshape(img_data, (1, self.image_size1 * self.image_size2))
-                    self.gnd[n] = i
-                    j += 1
-                    n += 1
-            self.K = 20
-            self.logger.info('%.2f s, Finished extracting UMist dataset', timeit.default_timer() - self.tic)
-
+        else:
+            raise  Exception("Not Implemented " + dataset)
+        """    elif 'usps' in dataset:
+                    usps = fetch_mldata("USPS")
+                    self.images = usps.data
+                    self.gnd = usps.target.astype(np.int) - 1
+                    self.image_size1 = 16
+                    self.image_size2 = 16
+                    self.channel = 1
+                    self.K = 10
+                    self.logger.info('%.2f s, Finished extracting USPS dataset', timeit.default_timer() - self.tic)
+                elif 'coil20' in dataset:
+                    self.image_size1 = 128
+                    self.image_size2 = 128
+                    self.channel =1
+                    self.images = np.zeros((20*72, self.image_size1 * self.image_size2), np.uint8)
+                    self.gnd = np.zeros(20*72, np.uint8)
+                    path = './dataset/coil-20-proc/obj'
+                    for i in range(20):
+                        for j in range(72):
+                            img_name = path + str(i+1) + '__' + str(j) + '.png'
+                            img = Image.open(img_name)
+                            img.load()
+                            img_data = np.asarray(img, dtype=np.uint8)
+                            self.images[i*72+j, :] = np.reshape(img_data, (1, self.image_size1 * self.image_size2))
+                            self.gnd[i*72+j] = i
+                    self.K = 20
+                    self.logger.info('%.2f s, Finished extracting COIL20 dataset', timeit.default_timer() - self.tic)
+                elif 'coil100' in dataset:
+                    self.image_size1 = 128
+                    self.image_size2 = 128
+                    self.channel = 3
+                    self.images = np.zeros((100*72, self.image_size1 * self.image_size2 * self.channel), np.uint8)
+                    self.gnd = np.zeros(100*72, np.uint8)
+                    path = './dataset/coil-100/obj'
+                    for i in range(100):
+                        for j in range(72):
+                            img_name = path + str(i+1) + '__' + str(j*5) + '.png'
+                            img = Image.open(img_name)
+                            img.load()
+                            img_data = np.asarray(img, dtype=np.uint8)
+                            self.images[i*72+j, :] = np.reshape(img_data, (1, self.image_size1 * self.image_size2 * self.channel))
+                            self.gnd[i*72+j] = i
+                    self.K = 100
+                    self.logger.info('%.2f s, Finished extracting COIL100 dataset', timeit.default_timer() - self.tic)
+                elif 'umist' in dataset:
+                    self.image_size1 = 112
+                    self.image_size2 = 92
+                    self.channel = 1
+                    self.images = np.zeros((575, self.image_size1 * self.image_size2), np.uint8)
+                    self.gnd = np.zeros(575, np.uint8)
+                    path = './dataset/UMist/'
+                    n = 0
+                    for i in range(20):
+                        j = 0
+                        while True:
+                            img_name = path + chr(97 + i) + str(j + 1) + '.pgm' # ord('a')=97
+                            if not os.path.isfile(img_name):
+                                break
+                            img = Image.open(img_name)
+                            img.load()
+                            img_data = np.asarray(img, dtype=np.uint8)
+                            self.images[n, :] = np.reshape(img_data, (1, self.image_size1 * self.image_size2))
+                            self.gnd[n] = i
+                            j += 1
+                            n += 1
+                    self.K = 20
+                    self.logger.info('%.2f s, Finished extracting UMist dataset', timeit.default_timer() - self.tic)
+                """
         self.Ns = np.size(self.images, 0)
         self.num_batch = int(np.ceil(1.0 * self.Ns / self.batch_size))
 
         # Optimizer: set up a variable that's incremented once per batch and controls the learning rate decay.
         self.global_step = tf.Variable(0)
         # Decay once per epoch, using an exponential schedule starting at 0.01.
-        self.learning_rate = tf.train.exponential_decay(
+        self.learning_rate = tf.compat.v1.train.exponential_decay(
             0.01,  # Base learning rate.
             self.iter_cnn, #self.global_step,  # Current index into the dataset.
             self.Ns,  # Decay step.
@@ -163,43 +169,45 @@ class joint_cluster_cnn():
         data = tf.reshape(x, [-1, self.image_size1, self.image_size2, self.channel])
 
         if 'mnist' in self.dataset: # 28 * 28
-            net = convolution2d(data, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='VALID',
-                                normalizer_fn=batch_norm, activation_fn=tf.nn.relu)  # 24 * 24
-            net = max_pool2d(net, [2,2], [2,2], padding='SAME')  # 12 * 12
-            net = convolution2d(net, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='VALID',
-                                normalizer_fn=batch_norm, activation_fn=tf.nn.relu)  # 8 * 8
+            net = Convolution2D(filters=50, kernel_size=(5, 5), strides=(1, 1), padding='VALID',
+                                activation=tf.nn.relu)(data)  # 24 * 24
+            net = BatchNormalization()(net)
+            net = MaxPool2D(pool_size= [2,2], strides=[2,2], padding='SAME')(net)  # 12 * 12
+            net = Convolution2D(filters=50, kernel_size=(5, 5), strides=(1, 1), padding='VALID',
+                               activation=tf.nn.relu)(net)  # 24 * 24
+            net = BatchNormalization()(net)
         elif 'usps' in self.dataset: # 16 * 16
-            net = convolution2d(data, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='VALID',
-                                normalizer_fn=batch_norm, activation_fn=tf.nn.relu)  # 12 * 12
-            net = max_pool2d(net, [2,2], [2,2], padding='SAME')  # 6 * 6
+            net = Convolution2D(data, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='VALID',
+                                normalizer_fn=BatchNormalization, activation_fn=tf.nn.relu)  # 12 * 12
+            net = MaxPool2D(net, [2,2], [2,2], padding='SAME')  # 6 * 6
         elif 'coil' in self.dataset: # 128 * 128
-            net = convolution2d(data, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='VALID',
-                                normalizer_fn=batch_norm, activation_fn=tf.nn.relu)  # 124 * 124
-            net = max_pool2d(net, [2,2], [2,2], padding='SAME')  # 62 * 62
-            net = convolution2d(net, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='VALID',
-                                normalizer_fn=batch_norm, activation_fn=tf.nn.relu)  # 58 * 58
-            net = max_pool2d(net, [2,2], [2,2], padding='SAME')  # 29 * 29
-            net = convolution2d(net, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='VALID',
-                                normalizer_fn=batch_norm, activation_fn=tf.nn.relu)  # 25 * 25
-            net = max_pool2d(net, [2,2], [2,2], padding='SAME')  # 13 * 13
-            net = convolution2d(net, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='VALID',
-                                normalizer_fn=batch_norm, activation_fn=tf.nn.relu)  # 9 * 9
-            net = max_pool2d(net, [2,2], [2,2], padding='SAME')  # 5 * 5
+            net = Convolution2D(data, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='VALID',
+                                normalizer_fn=BatchNormalization, activation_fn=tf.nn.relu)  # 124 * 124
+            net = MaxPool2D(net, [2,2], [2,2], padding='SAME')  # 62 * 62
+            net = Convolution2D(net, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='VALID',
+                                normalizer_fn=BatchNormalization, activation_fn=tf.nn.relu)  # 58 * 58
+            net = MaxPool2D(net, [2,2], [2,2], padding='SAME')  # 29 * 29
+            net = Convolution2D(net, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='VALID',
+                                normalizer_fn=BatchNormalization, activation_fn=tf.nn.relu)  # 25 * 25
+            net = Convolution2D(net, [2,2], [2,2], padding='SAME')  # 13 * 13
+            net = Convolution2D(net, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='VALID',
+                                normalizer_fn=BatchNormalization, activation_fn=tf.nn.relu)  # 9 * 9
+            net = MaxPool2D(net, [2,2], [2,2], padding='SAME')  # 5 * 5
         elif 'umist' in self.dataset: # 112 * 92
-            net = convolution2d(data, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='SAME',
-                                normalizer_fn=batch_norm, activation_fn=tf.nn.relu)  # 112 * 92
-            net = max_pool2d(net, [2,2], [2,2], padding='SAME')  # 56 * 46
-            net = convolution2d(net, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='SAME',
-                                normalizer_fn=batch_norm, activation_fn=tf.nn.relu)  # 56 * 46
-            net = max_pool2d(net, [2,2], [2,2], padding='SAME')  # 28 * 23
-            net = convolution2d(net, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='SAME',
-                                normalizer_fn=batch_norm, activation_fn=tf.nn.relu)  # 28 * 23
-            net = max_pool2d(net, [2,2], [2,2], padding='SAME')  # 14 * 12
+            net = Convolution2D(data, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='SAME',
+                                normalizer_fn=BatchNormalization, activation_fn=tf.nn.relu)  # 112 * 92
+            net = MaxPool2D(net, [2,2], [2,2], padding='SAME')  # 56 * 46
+            net = Convolution2D(net, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='SAME',
+                                normalizer_fn=BatchNormalization, activation_fn=tf.nn.relu)  # 56 * 46
+            net = MaxPool2D(net, [2,2], [2,2], padding='SAME')  # 28 * 23
+            net = Convolution2D(net, num_outputs=50, kernel_size=(5, 5), stride=(1, 1), padding='SAME',
+                                normalizer_fn=BatchNormalization, activation_fn=tf.nn.relu)  # 28 * 23
+            net = MaxPool2D(net, [2,2], [2,2], padding='SAME')  # 14 * 12
 
-        print net.get_shape()
-        net = flatten(net)
-        print net.get_shape()
-        net = fully_connected(net, num_outputs=160)
+        print (net.get_shape())
+        net = Flatten()(net)
+        print (net.get_shape())
+        net = tf.keras.layers.Dense(units=160)(net)
         net = tf.nn.l2_normalize(net, 1)
 
         net_shape = net.get_shape().as_list()
@@ -234,6 +242,8 @@ class joint_cluster_cnn():
     def get_Dis(self, fea, k):
         # Calculate Dis
         self.logger.info('%.2f s, Begin to fit neighbour graph', timeit.default_timer() - self.tic)
+
+        #fea_shaped = fea.reshape(fea.shape[0],self.image_size1* self.image_size2 )
         neigh = NearestNeighbors(n_neighbors=k, n_jobs=-1).fit(fea)
         self.logger.info('%.2f s, Finished fitting, begin to calculate Dis', timeit.default_timer() - self.tic)
         sortedDis, indexDis = neigh.kneighbors()
@@ -449,6 +459,7 @@ class joint_cluster_cnn():
         if num_triplet == 0:
             return 0,0,0
 
+        num_triplet = int (num_triplet)
         anc = np.zeros(num_triplet, np.int64)
         pos = np.zeros(num_triplet, np.int64)
         neg = np.zeros(num_triplet, np.int64)
@@ -477,13 +488,13 @@ class joint_cluster_cnn():
     def train(self, labels):
         with tf.device('/cpu:0'):
 
-            x = tf.placeholder(tf.float32, shape=[None, self.image_size1 * self.image_size2 * self.channel])
-            y = tf.placeholder(tf.float32, shape=[None, 1])
+            x = tf.compat.v1.placeholder(tf.float32, shape=[None, self.image_size1 * self.image_size2 * self.channel])
+            y = tf.compat.v1.placeholder(tf.float32, shape=[None, 1])
 
             fea_batch = self.model(x)
 
             # Get trplets
-            anc_idx, pos_idx, neg_idx = tf.py_func(self.get_triplet, [y], [tf.int64, tf.int64, tf.int64])
+            anc_idx, pos_idx, neg_idx = tf.compat.v1.py_func(self.get_triplet, [y], [tf.int64, tf.int64, tf.int64])
             anc = tf.gather(fea_batch, anc_idx)
             pos = tf.gather(fea_batch, pos_idx)
             neg = tf.gather(fea_batch, neg_idx)
@@ -498,8 +509,8 @@ class joint_cluster_cnn():
             learning_rate = self.learning_rate * np.power(1 + self.gamma_lr * self.iter_cnn, - self.power_lr)
 
             # train_step = tf.train.MomentumOptimizer(learning_rate, 0.9).minimize(loss, global_step=self.global_step)
-            train_step = tf.train.MomentumOptimizer(learning_rate, 0.9).minimize(loss)
-            self.sess.run(tf.initialize_all_variables())
+            train_step = tf.compat.v1.train.MomentumOptimizer(learning_rate, 0.9).minimize(loss)
+            self.sess.run(tf.compat.v1.initialize_all_variables())
 
             for e in range(self.epochs):
                 self.logger.info('%.2f s, Period: %d, epoch: %d, training...', timeit.default_timer() - self.tic, self.p, e)
@@ -543,10 +554,15 @@ class joint_cluster_cnn():
 
             return fea
 
-    def recurrent_process(self, features, updateCNN):
+    def custom_normalize(self, fea):
+        for i in range(fea.shape[0]):
+            fea[i] = normalize(fea[i], axis=1)
+        return fea
 
+    def recurrent_process(self, features, updateCNN):
         fea = np.copy(features)
         fea = normalize(fea, axis=1)
+        #fea = self.custom_normalize(fea)
 
         if updateCNN:
             sortedDis, indexDis = self.get_Dis(fea, 1)
@@ -582,6 +598,7 @@ class joint_cluster_cnn():
 
                 fea = self.train(labels)
                 fea = normalize(fea, axis=1)
+                #fea = self.custom_normalize(fea)
 
                 # Update A based on the new feature representation
                 sortedDis, indexDis = self.get_Dis(fea, self.Ks)
